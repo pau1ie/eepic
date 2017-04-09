@@ -13,10 +13,10 @@ import os.path
 import pygame
 from pygame.locals import *
 from pytmx.util_pygame import load_pygame
-
 import pyscroll
 import pyscroll.data
 from pyscroll.group import PyscrollGroup
+import random
 
 
 # define configuration variables here
@@ -42,6 +42,74 @@ def get_map(filename):
 def load_image(filename):
     return pygame.image.load(os.path.join(RESOURCES_DIR, filename))
 
+
+class Npc(pygame.sprite.Sprite):
+    """ Non player character. Similar to hero but moves by itself.
+    """
+
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load(os.path.join('people','circle guy.png')).convert_alpha()
+        self.velocity = [0.0, 0]
+        self._position = [0, 0]
+        self._old_position = self.position
+        self.rect = self.image.get_rect()
+        self.wallhit=False
+        
+    def __del__(self):
+        print("Destructor called")
+
+    @property
+    def position(self):
+        return list(self._position)
+
+    @position.setter
+    def position(self, value):
+        self._position = list(value)
+
+    def update(self, dt):
+        self._position[1] += self.velocity[1] * dt
+        self.rect.topleft = self._position
+        idx = self.rect.collidelist(game.walls)
+        if idx > -1:
+            self.velocity[0] += HERO_MOVE_SPEED/2.0*dt*(random.random()-0.5)
+            print("Velocity %d" % self.velocity[0])
+            if self.velocity[0] > HERO_MOVE_SPEED*1.1:
+                self.velocity[0] = HERO_MOVE_SPEED*1.1
+            if self.velocity[0] < -1*HERO_MOVE_SPEED*1.1:
+                self.velocity[0] = -1*HERO_MOVE_SPEED*1.1               
+            self.rect.bottom = game.walls[idx].top
+            self._position = list(self.rect.topleft)
+            if self.wallhit and self.on_platform():  # Hit a wall.
+                self.wallhit = False
+                if random.random() > 0.4:
+                    self.velocity[0] = -1*self.velocity[0]
+                else:
+                    self.velocity[1]= -HERO_MOVE_SPEED*2  #jump
+        else:
+            self.velocity[1] += GRAVITY * dt
+          
+        self._old_position = self._position[:]
+        self._position[0] = self._position[0] + self.velocity[0] * dt
+        self.rect.topleft = self._position
+        print("Position %d, %d" % (self.position[0], self.position[1]) )
+
+    def move_back(self):
+        """ If called after an update, the sprite can move back
+        """
+        #print("move_back")
+        self._position = self._old_position
+        self.rect.topleft = self._position
+        self.wallhit=True
+
+    def on_platform(self):
+        self.rect.y += 2
+        if self.rect.collidelist(game.walls) > -1:
+            onplat=True
+        else:
+            onplat=False
+        self.rect.y -= 2
+        return onplat 
 
 class Hero(pygame.sprite.Sprite):
     """ Our Hero
@@ -78,11 +146,10 @@ class Hero(pygame.sprite.Sprite):
         self.rect.topleft = self._position
         idx = self.rect.collidelist(game.walls)
         if idx > -1:
-            print("Falling and hit %d" % idx)
+            #print("Falling and hit %d" % idx)
             #Hit a platform. Need to set ourselves above it.
             self.rect.bottom = game.walls[idx].top
             self.velocity[1]=0
-            self.falling=False
             self._position = list(self.rect.topleft)
         else:
            self.velocity[1] += GRAVITY * dt
@@ -94,7 +161,7 @@ class Hero(pygame.sprite.Sprite):
     def move_back(self):
         """ If called after an update, the sprite can move back
         """
-        print("move_back")
+        #print("move_back")
         self._position = self._old_position
         self.rect.topleft = self._position
 
@@ -146,12 +213,17 @@ class QuestGame(object):
         self.group = PyscrollGroup(map_layer=self.map_layer, default_layer=2)
 
         self.hero = Hero()
+        self.npc = list()
+        self.npc = Npc()
 
         # put the hero in the center of the map
         self.hero.position = self.map_layer.map_rect.center
+        self.npc.position = self.map_layer.map_rect.center
+
 
         # add our hero to the group
         self.group.add(self.hero)
+        self.group.add(self.npc)
 
     def draw(self, surface):
 
@@ -251,7 +323,7 @@ class QuestGame(object):
 if __name__ == "__main__":
     pygame.init()
     pygame.font.init()
-    screen = init_screen(800, 600)
+    screen = init_screen(1600, 1200)
     pygame.display.set_caption('Quest - An epic journey.')
 
     try:
